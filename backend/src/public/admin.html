@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bonjour Admin</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        background: #f5e6d3;
+        color: #2f3e34;
+      }
+      .container {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+      .card {
+        background: #fff;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 16px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+      }
+      h1, h2 {
+        margin-top: 0;
+        color: #6f4e37;
+      }
+      input, textarea, select, button {
+        width: 100%;
+        padding: 10px;
+        margin: 6px 0;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        box-sizing: border-box;
+      }
+      button {
+        background: #6f4e37;
+        color: white;
+        border: none;
+        cursor: pointer;
+      }
+      button:hover {
+        opacity: 0.92;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 12px;
+      }
+      .muted {
+        color: #666;
+        font-size: 14px;
+      }
+      .success {
+        color: #1d7a2f;
+      }
+      .error {
+        color: #b00020;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Bonjour Admin Panel</h1>
+      <p class="muted">Login with Firebase, upload images to Cloudinary, and save data to MongoDB Atlas.</p>
+
+      <div class="card">
+        <h2>1) Firebase Login</h2>
+        <input id="email" type="email" placeholder="Admin email" />
+        <input id="password" type="password" placeholder="Password" />
+        <button id="loginBtn">Login</button>
+        <button id="logoutBtn" style="background:#2f3e34; margin-top:8px;">Logout</button>
+        <p id="authStatus" class="muted">Not logged in</p>
+      </div>
+
+      <div class="card">
+        <h2>2) Upload Image</h2>
+        <input id="folder" placeholder="Cloudinary folder (example: bonjour/hero)" value="bonjour/admin" />
+        <input id="image" type="file" accept="image/*" />
+        <button id="uploadBtn">Upload</button>
+        <p id="uploadStatus" class="muted"></p>
+      </div>
+
+      <div class="card">
+        <h2>3) Add Content</h2>
+        <div class="grid">
+          <div>
+            <h3>Add Hero Slide</h3>
+            <input id="heroTitle" placeholder="Title (optional)" />
+            <input id="heroImageUrl" placeholder="Image URL from upload" />
+            <input id="heroPublicId" placeholder="Cloudinary Public ID" />
+            <input id="heroOrder" type="number" placeholder="Order" value="0" />
+            <button id="addHeroBtn">Add Hero Slide</button>
+          </div>
+
+          <div>
+            <h3>Add Gallery Image</h3>
+            <input id="galleryCaption" placeholder="Caption" />
+            <input id="galleryImageUrl" placeholder="Image URL from upload" />
+            <input id="galleryPublicId" placeholder="Cloudinary Public ID" />
+            <input id="galleryOrder" type="number" placeholder="Order" value="0" />
+            <button id="addGalleryBtn">Add Gallery Image</button>
+          </div>
+
+          <div>
+            <h3>Add Menu Item</h3>
+            <input id="menuName" placeholder="Name" />
+            <input id="menuDescription" placeholder="Description" />
+            <input id="menuCategory" placeholder="Category" />
+            <input id="menuPrice" type="number" placeholder="Price (INR)" />
+            <input id="menuImageUrl" placeholder="Image URL from upload" />
+            <input id="menuPublicId" placeholder="Cloudinary Public ID" />
+            <input id="menuOrder" type="number" placeholder="Order" value="0" />
+            <button id="addMenuBtn">Add Menu Item</button>
+          </div>
+
+          <div>
+            <h3>Add Review</h3>
+            <input id="reviewName" placeholder="Name" />
+            <input id="reviewRole" placeholder="Role" />
+            <textarea id="reviewMessage" placeholder="Message"></textarea>
+            <input id="reviewRating" type="number" min="1" max="5" placeholder="Rating (1-5)" value="5" />
+            <input id="reviewAvatarUrl" placeholder="Avatar URL (optional)" />
+            <input id="reviewAvatarPublicId" placeholder="Avatar Public ID (optional)" />
+            <input id="reviewOrder" type="number" placeholder="Order" value="0" />
+            <button id="addReviewBtn">Add Review</button>
+          </div>
+        </div>
+        <p id="contentStatus" class="muted"></p>
+      </div>
+    </div>
+
+    <script type="module">
+      import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+      import { getAuth, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+
+      const firebaseConfig = {
+        apiKey: 'REPLACE_WITH_FIREBASE_WEB_API_KEY',
+        authDomain: 'REPLACE_WITH_FIREBASE_AUTH_DOMAIN',
+        projectId: 'REPLACE_WITH_FIREBASE_PROJECT_ID',
+      };
+
+      const app = initializeApp(firebaseConfig);
+      const auth = getAuth(app);
+
+      let idToken = null;
+
+      const authStatus = document.getElementById('authStatus');
+      const uploadStatus = document.getElementById('uploadStatus');
+      const contentStatus = document.getElementById('contentStatus');
+
+      function setStatus(el, message, kind = 'muted') {
+        el.className = kind;
+        el.textContent = message;
+      }
+
+      async function api(path, options = {}) {
+        const headers = options.headers || {};
+        if (idToken) {
+          headers.Authorization = `Bearer ${idToken}`;
+        }
+        const res = await fetch(path, { ...options, headers });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.message || 'Request failed');
+        }
+        return data;
+      }
+
+      document.getElementById('loginBtn').addEventListener('click', async () => {
+        try {
+          const email = document.getElementById('email').value.trim();
+          const password = document.getElementById('password').value;
+          const credential = await signInWithEmailAndPassword(auth, email, password);
+          idToken = await credential.user.getIdToken(true);
+          setStatus(authStatus, `Logged in as ${credential.user.email}`, 'success');
+        } catch (error) {
+          setStatus(authStatus, error.message, 'error');
+        }
+      });
+
+      document.getElementById('logoutBtn').addEventListener('click', async () => {
+        await signOut(auth);
+        idToken = null;
+        setStatus(authStatus, 'Logged out', 'muted');
+      });
+
+      document.getElementById('uploadBtn').addEventListener('click', async () => {
+        try {
+          const file = document.getElementById('image').files[0];
+          if (!file) {
+            throw new Error('Please select an image');
+          }
+          const formData = new FormData();
+          formData.append('image', file);
+          formData.append('folder', document.getElementById('folder').value || 'bonjour/admin');
+          const data = await api('/api/admin/upload-image', { method: 'POST', body: formData });
+          setStatus(uploadStatus, `Uploaded. URL: ${data.url} | Public ID: ${data.publicId}`, 'success');
+        } catch (error) {
+          setStatus(uploadStatus, error.message, 'error');
+        }
+      });
+
+      document.getElementById('addHeroBtn').addEventListener('click', async () => {
+        try {
+          await api('/api/admin/hero-slides', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: document.getElementById('heroTitle').value,
+              imageUrl: document.getElementById('heroImageUrl').value,
+              cloudinaryPublicId: document.getElementById('heroPublicId').value,
+              order: Number(document.getElementById('heroOrder').value || 0),
+            }),
+          });
+          setStatus(contentStatus, 'Hero slide added', 'success');
+        } catch (error) {
+          setStatus(contentStatus, error.message, 'error');
+        }
+      });
+
+      document.getElementById('addGalleryBtn').addEventListener('click', async () => {
+        try {
+          await api('/api/admin/gallery-images', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              caption: document.getElementById('galleryCaption').value,
+              imageUrl: document.getElementById('galleryImageUrl').value,
+              cloudinaryPublicId: document.getElementById('galleryPublicId').value,
+              order: Number(document.getElementById('galleryOrder').value || 0),
+            }),
+          });
+          setStatus(contentStatus, 'Gallery image added', 'success');
+        } catch (error) {
+          setStatus(contentStatus, error.message, 'error');
+        }
+      });
+
+      document.getElementById('addMenuBtn').addEventListener('click', async () => {
+        try {
+          await api('/api/admin/menu-items', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: document.getElementById('menuName').value,
+              description: document.getElementById('menuDescription').value,
+              category: document.getElementById('menuCategory').value,
+              price: Number(document.getElementById('menuPrice').value || 0),
+              imageUrl: document.getElementById('menuImageUrl').value,
+              cloudinaryPublicId: document.getElementById('menuPublicId').value,
+              order: Number(document.getElementById('menuOrder').value || 0),
+            }),
+          });
+          setStatus(contentStatus, 'Menu item added', 'success');
+        } catch (error) {
+          setStatus(contentStatus, error.message, 'error');
+        }
+      });
+
+      document.getElementById('addReviewBtn').addEventListener('click', async () => {
+        try {
+          await api('/api/admin/reviews', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: document.getElementById('reviewName').value,
+              role: document.getElementById('reviewRole').value,
+              message: document.getElementById('reviewMessage').value,
+              rating: Number(document.getElementById('reviewRating').value || 5),
+              avatarUrl: document.getElementById('reviewAvatarUrl').value,
+              cloudinaryPublicId: document.getElementById('reviewAvatarPublicId').value,
+              order: Number(document.getElementById('reviewOrder').value || 0),
+            }),
+          });
+          setStatus(contentStatus, 'Review added', 'success');
+        } catch (error) {
+          setStatus(contentStatus, error.message, 'error');
+        }
+      });
+    </script>
+  </body>
+</html>
